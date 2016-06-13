@@ -164,14 +164,14 @@ handle_cast(Request, State) ->
 handle_info(close_unused, State) ->
 	Old = now_secs() - 60,
 	{Unused, Used} = lists:partition(fun({_C,Time}) -> Time < Old end, State#state.connections),
-	[ pgsql:close(C) || {C,_} <- Unused ],
+	[ epgsql:close(C) || {C,_} <- Unused ],
 	{noreply, State#state{connections=Used}};
 
 %% Requestor we are monitoring went down. Kill the associated connection, as it might be in an unknown state.
 handle_info({'DOWN', M, process, _Pid, _Info}, #state{monitors = Monitors} = State) ->
     case lists:keytake(M, 2, Monitors) of
         {value, {C, M}, Monitors2} ->
-			pgsql:close(C),
+			epgsql:close(C),
             {noreply, State#state{monitors = Monitors2}};
         false ->
             {noreply, State}
@@ -204,7 +204,7 @@ connect(Opts) ->
     Host     = proplists:get_value(host, Opts),
     Username = proplists:get_value(username, Opts),
     Password = proplists:get_value(password, Opts),
-    pgsql:connect(Host, Username, Password, Opts).
+    epgsql:connect(Host, Username, Password, Opts).
 
 deliver({Pid,_Tag} = From, C, #state{monitors=Monitors} = State) ->
     M = erlang:monitor(process, Pid),
@@ -215,7 +215,7 @@ return(C, #state{connections = Connections, monitors = Monitors, waiting = Waiti
     %%slog:info("POOL: Connection returned: Conns:~p Waiting:~p", [length(Connections), queue:len(Waiting)]),
     case Size =< length(Monitors) of
         true ->
-            pgsql:close(C),
+            epgsql:close(C),
             State;
         false ->
             case queue:out(Waiting) of
