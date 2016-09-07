@@ -81,7 +81,6 @@ init({Name, Size, Opts}) ->
       monitors    = [],
       waiting     = queue:new(),
       timer       = TRef},
-    io:format("Pool ~p ~p ~p ~n", [Name, Size, Opts]),
     {ok, State}.
 
 %% Requestor wants a connection. When available then immediately return, otherwise add to the waiting queue.
