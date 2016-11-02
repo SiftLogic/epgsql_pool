@@ -2,14 +2,14 @@
 
 -export([start_link/2, start_link/3, stop/1]).
 -export([get_connection/1, get_connection/2, return_connection/2]).
--export([connection_info/1, resize_pool/2, change_timeout/2]).
+-export([connection_info/1, resize_pool/2, change_timeout/2, show_monitors/1]).
 
--export([init/1, code_change/3, terminate/2]). 
+-export([init/1, code_change/3, terminate/2]).
 -export([handle_call/3, handle_cast/2, handle_info/2]).
 
 -record(state, {id, size, connections, monitors, waiting, opts, timer}).
 
- %% -- client interface --
+%% -- client interface --
 
 opts(Opts) ->
     Defaults = [{host, "localhost"},
@@ -40,15 +40,15 @@ get_connection(P) ->
 
 %% @doc Get a db connection, wait at most Timeout seconds before giving up.
 get_connection(P, Timeout) ->
-	try
-    	gen_server:call(P, get_connection, Timeout)
-	catch 
+    try
+        gen_server:call(P, get_connection, Timeout)
+    catch
         exit:{noproc, {gen_server, call, _}} ->
             {error, no_such_pool};
-		exit:{timeout, {gen_server, call, _}} ->
+        exit:{timeout, {gen_server, call, _}} ->
             gen_server:cast(P, {cancel_wait, self()}),
             {error, timeout}
-	end.
+    end.
 
 %% @doc Return a db connection back to the connection pool.
 return_connection(P, C) ->
@@ -63,42 +63,46 @@ resize_pool(C, Size) ->
 change_timeout(C, Timeout) ->
     gen_server:call(C, {change_timeout, Timeout}).
 
+show_monitors(C) ->
+    gen_server:call(C, show_monitors).
+
 %% -- gen_server implementation --
 
 init({Name, Size, Opts}) ->
     process_flag(trap_exit, true),
-    Id = case Name of 
-			undefined -> self();
-			_Name -> Name
-		 end,
+    Id = case Name of
+             undefined -> self();
+             _Name -> Name
+         end,
     {ok, Connection} = connect(Opts),
-	{ok, TRef} = timer:send_interval(60000, close_unused),
+    {ok, TRef} = timer:send_interval(60000, close_unused),
     State = #state{
-      id          = Id,
-      size        = Size,
-      opts        = Opts,
-      connections = [{Connection, now_secs()}],
-      monitors    = [],
-      waiting     = queue:new(),
-      timer       = TRef},
+               id          = Id,
+               size        = Size,
+               opts        = Opts,
+               connections = [{Connection, now_secs()}],
+               monitors    = [],
+               waiting     = queue:new(),
+               timer       = TRef},
+    io:format("Pool ~p ~p ~p ~n", [Name, Size, Opts]),
     {ok, State}.
 
 %% Requestor wants a connection. When available then immediately return, otherwise add to the waiting queue.
 handle_call(get_connection, From, #state{connections = Connections, waiting = Waiting} = State) ->
     case Connections of
-        [{C,_} | T] -> 
-			% Return existing unused connection
-			{noreply, deliver(From, C, State#state{connections = T})};
+        [{C,_} | T] ->
+                                                % Return existing unused connection
+            {noreply, deliver(From, C, State#state{connections = T})};
         [] ->
-			case length(State#state.monitors) < State#state.size of
-				true ->
-					% Allocate a new connection and return it.
-					{ok, C} = connect(State#state.opts),
-				    {noreply, deliver(From, C, State)};
-				false ->
-					% Reached max connections, let the requestor wait
-	 				{noreply, State#state{waiting = queue:in(From, Waiting)}}
-			end
+            case length(State#state.monitors) < State#state.size of
+                true ->
+                                                % Allocate a new connection and return it.
+                    {ok, C} = connect(State#state.opts),
+                    {noreply, deliver(From, C, State)};
+                false ->
+                                                % Reached max connections, let the requestor wait
+                    {noreply, State#state{waiting = queue:in(From, Waiting)}}
+            end
     end;
 
 handle_call(connection_info, _From, #state{connections = Connections,
@@ -122,6 +126,8 @@ handle_call({resize_pool, NewSize}, _From, #state{connections = Connections,
              {available, length(Connections)},
              {waiting, queue:len(Waiting)}], State#state{size = NewSize}};
 
+handle_call(show_monitors, _From, #state{monitors = Monitors} = State) ->
+    {reply, Monitors, State};
 
 handle_call({change_timeout, NewTimeout}, _From, #state{opts = Opts0} = State) ->
     Opts = case lists:keyfind(timeout, 1, Opts0) of
@@ -161,16 +167,16 @@ handle_cast(Request, State) ->
 
 %% Close all connections that are unused for longer than a minute.
 handle_info(close_unused, State) ->
-	Old = now_secs() - 60,
-	{Unused, Used} = lists:partition(fun({_C,Time}) -> Time < Old end, State#state.connections),
-	[ pgsql:close(C) || {C,_} <- Unused ],
-	{noreply, State#state{connections=Used}};
+    Old = now_secs() - 60,
+    {Unused, Used} = lists:partition(fun({_C,Time}) -> Time < Old end, State#state.connections),
+    [ pgsql:close(C) || {C,_} <- Unused ],
+    {noreply, State#state{connections=Used}};
 
 %% Requestor we are monitoring went down. Kill the associated connection, as it might be in an unknown state.
 handle_info({'DOWN', M, process, _Pid, _Info}, #state{monitors = Monitors} = State) ->
     case lists:keytake(M, 2, Monitors) of
         {value, {C, M}, Monitors2} ->
-			pgsql:close(C),
+            pgsql:close(C),
             {noreply, State#state{monitors = Monitors2}};
         false ->
             {noreply, State}
@@ -191,7 +197,7 @@ handle_info(Info, State) ->
     {stop, {unsupported_info, Info}, State}.
 
 terminate(_Reason, State) ->
-	timer:cancel(State#state.timer),
+    timer:cancel(State#state.timer),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -207,8 +213,8 @@ connect(Opts) ->
 
 deliver({Pid,_Tag} = From, C, #state{monitors=Monitors} = State) ->
     M = erlang:monitor(process, Pid),
-	gen_server:reply(From, {ok, C}),
-	State#state{ monitors=[{C, M} | Monitors] }.
+    gen_server:reply(From, {ok, C}),
+    State#state{ monitors=[{C, M} | Monitors] }.
 
 return(C, #state{connections = Connections, monitors = Monitors, waiting = Waiting, size = Size} = State) ->
     %%slog:info("POOL: Connection returned: Conns:~p Waiting:~p", [length(Connections), queue:len(Waiting)]),

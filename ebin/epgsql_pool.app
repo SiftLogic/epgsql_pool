@@ -1,6 +1,6 @@
 {application,epgsql_pool,
              [{description,"PostgreSQL Connection Pool"},
-              {vsn,"0.1"},
+              {vsn,"0.1.0"},
               {registered,[]},
               {applications,[kernel,stdlib,epgsql]},
               {mod,{epgsql_pool_app,[]}},
