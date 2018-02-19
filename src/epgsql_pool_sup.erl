@@ -48,7 +48,7 @@ init([]) ->
      {{simple_one_for_one, 2, 60},
       [{pool,
         {pgsql_pool, start_link, []},
-        transient, 2000, supervisor,
+        transient, 2000, worker,
         [pgsql_pool]}]}}.
 
 %% ===================================================================
