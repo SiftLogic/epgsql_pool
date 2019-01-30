@@ -91,16 +91,21 @@ init({Name, Size, Opts}) ->
 handle_call(get_connection, From, #state{connections = Connections, waiting = Waiting} = State) ->
     case Connections of
         [{C,_} | T] ->
-                                                % Return existing unused connection
+            %% Return existing unused connection
             {noreply, deliver(From, C, State#state{connections = T})};
         [] ->
             case length(State#state.monitors) < State#state.size of
                 true ->
-                                                % Allocate a new connection and return it.
-                    {ok, C} = connect(State#state.opts),
-                    {noreply, deliver(From, C, State)};
+                    %% Allocate a new connection and return it.
+                    case connect(State#state.opts) of
+                        {ok, C} ->
+                            {noreply, deliver(From, C, State)};
+                        {error,<<"53300">>} ->
+                            %% Max configured DB connections exceeded, let the requestor wait
+                            {noreply, State#state{waiting = queue:in(From, Waiting)}}
+                    end;
                 false ->
-                                                % Reached max connections, let the requestor wait
+                    %% Reached max connections, let the requestor wait
                     {noreply, State#state{waiting = queue:in(From, Waiting)}}
             end
     end;
