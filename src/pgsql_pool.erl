@@ -47,7 +47,7 @@ get_connection(P, Timeout) ->
             {error, no_such_pool};
         exit:{timeout, {gen_server, call, _}} ->
             gen_server:cast(P, {cancel_wait, self()}),
-            {error, timeout}
+            {error, get_connection_timeout}
     end.
 
 %% @doc Return a db connection back to the connection pool.
