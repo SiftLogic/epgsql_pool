@@ -222,7 +222,6 @@ deliver({Pid,_Tag} = From, C, #state{monitors=Monitors} = State) ->
     State#state{ monitors=[{C, M} | Monitors] }.
 
 return(C, #state{connections = Connections, monitors = Monitors, waiting = Waiting, size = Size} = State) ->
-    %%slog:info("POOL: Connection returned: Conns:~p Waiting:~p", [length(Connections), queue:len(Waiting)]),
     case Size =< length(Monitors) of
         true ->
             pgsql:close(C),
@@ -230,12 +229,10 @@ return(C, #state{connections = Connections, monitors = Monitors, waiting = Waiti
         false ->
             case queue:out(Waiting) of
                 {{value, From}, Waiting2} ->
-                    %%slog:info("Giving Conn to ~p", [From]),
                     State2 = deliver(From, C, State),
                     State2#state{waiting = Waiting2};
                 {empty, _Waiting} ->
                     Connections2 = [{C, now_secs()} | Connections],
-                    %%slog:info("No Waiters, adding to available ~p", [length(Connections2)]),
                     State#state{connections = Connections2}
             end
     end.
