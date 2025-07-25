@@ -1,0 +1,8 @@
+[{<<"epgsql">>,
+  {git,"https://github.com/SiftLogic/epgsql.git",
+       {ref,"fd5e840c345a5851876ee9f989a8df35d9af5404"}},
+  0},
+ {<<"gen_fsm_compat">>,
+  {git,"https://github.com/SiftLogic/gen_fsm_compat.git",
+       {ref,"0e1608da1683f1900d57cb4493c335fb7c039394"}},
+  1}].
